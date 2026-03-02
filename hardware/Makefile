@@ -38,10 +38,18 @@ endif
 # build path
 buildpath      ?= build
 resultpath     ?= results
+# VCS build path
+vcs_buildpath  ?= $(buildpath)/vcs
+# VCS generated C sources
+vcs_csrc_dir   ?= $(vcs_buildpath)/csrc
 # questa library
 library        ?= work
 # dpi library
 dpi_library    ?= work-dpi
+# VCS simulation binary
+vcs_binary     ?= $(abspath $(vcs_buildpath)/simv)
+# VCS compile script
+vcs_script     ?= $(vcs_buildpath)/compile_$(config).sh
 # verilator library
 veril_library  ?= $(buildpath)/verilator
 # verilator path
@@ -60,6 +68,16 @@ endif
 questa_cmd     ?= questa-$(questa_version)
 # QuestaSim arguments
 questa_args    ?=
+# VCS commands
+vcs_cmd        ?= vcs
+vlogan_cmd     ?= vlogan
+vhdlan_cmd     ?= vhdlan
+# VCS elaboration/runtime arguments
+vcs_elab_args  ?=
+vcs_run_args   ?=
+# VCS compile arguments passed through Bender
+vlogan_args    ?=
+vhdlan_args    ?=
 # Path to the binaries
 app_path       ?= $(abspath $(ROOT_DIR)/../apps/bin)
 # Path to ideal dispatcher vtraces
@@ -94,12 +112,14 @@ endif
 endif
 ifdef preload
 	questa_args += +PRELOAD=$(preload)
+	vcs_run_args += +PRELOAD=$(preload)
 endif
 questa_args += -sv_lib $(dpi_library)/ara_dpi -work $(library) -voptargs=+acc
 questa_args += -suppress vsim-3009 -suppress vopt-7033
 
 # DPI source files
-dpi   := $(patsubst tb/dpi/%.cc,$(buildpath)/$(dpi_library)/%.o,$(wildcard tb/dpi/*.cc))
+dpi_src := $(wildcard tb/dpi/*.cc)
+dpi     := $(patsubst tb/dpi/%.cc,$(buildpath)/$(dpi_library)/%.o,$(dpi_src))
 
 vlog_args += -suppress vlog-2583 -suppress vlog-13314 -suppress vlog-13233
 vlog_args += -work $(library)
@@ -133,6 +153,7 @@ bender_defs_veril := $(bender_defs) --define COMMON_CELLS_ASSERTS_OFF
 # Targets
 bender_common_targs := -t rtl -t cv64a6_imafdcv_sv39 -t tech_cells_generic_include_tc_sram -t tech_cells_generic_include_tc_clk
 bender_targs_simc     := $(bender_common_targs) -t ara_test -t cva6_test
+bender_targs_vcs      := $(bender_common_targs) -t ara_test -t cva6_test
 bender_targs_veril    := $(bender_common_targs) -t ara_test -t cva6_test -t verilator
 bender_targs_spyglass := $(bender_common_targs) -t spyglass
 
@@ -142,6 +163,9 @@ all: compile
 # Build path
 $(buildpath):
 	mkdir -p $(buildpath)
+
+$(vcs_buildpath):
+	mkdir -p $(vcs_buildpath)
 
 .PHONY: bender update
 # Bender
@@ -192,6 +216,34 @@ simc: compile
 	cd $(buildpath) && \
 	$(questa_cmd) vsim -c $(questa_args) $(library).$(top_level) -do "run -a"
 	./scripts/return_status.sh $(buildpath)/transcript
+
+# VCS
+.PHONY: compile_vcs sim_vcs simc_vcs sim_gui_vcs
+compile_vcs: dpi $(vcs_buildpath) bender $(vcs_binary)
+
+$(vcs_script): $(vcs_buildpath) $(BENDER) $(config_file) Makefile ../Bender.yml $(shell find src -type f) $(shell find ../config -type f) $(shell find include -type f) $(shell find tb -type f) $(shell find deps -type f)
+	$(BENDER) script vcs --vlogan-bin=$(vlogan_cmd) --vhdlan-bin=$(vhdlan_cmd) \
+	$(foreach arg,$(vlogan_args),--vlogan-arg=$(arg)) \
+	$(foreach arg,$(vhdlan_args),--vhdlan-arg=$(arg)) \
+	$(bender_targs_vcs) $(bender_defs) > $(vcs_script)
+	chmod +x $(vcs_script)
+
+$(vcs_binary): $(vcs_script)
+	cd $(vcs_buildpath) && ./$(notdir $(vcs_script))
+	cd $(vcs_buildpath) && $(vcs_cmd) -full64 $(vcs_elab_args) \
+		-Mdir $(notdir $(vcs_csrc_dir)) -o $(notdir $(vcs_binary)) $(top_level)
+
+sim_vcs: compile_vcs
+	set -o pipefail; cd $(vcs_buildpath) && \
+		./$(notdir $(vcs_binary)) -sv_lib $(abspath $(buildpath)/$(dpi_library)/ara_dpi) $(vcs_run_args) 2>&1 | tee transcript
+	./scripts/return_status.sh $(vcs_buildpath)/transcript
+
+simc_vcs: sim_vcs
+
+sim_gui_vcs: compile_vcs
+	set -o pipefail; cd $(vcs_buildpath) && \
+		./$(notdir $(vcs_binary)) -gui -sv_lib $(abspath $(buildpath)/$(dpi_library)/ara_dpi) $(vcs_run_args) 2>&1 | tee transcript
+	./scripts/return_status.sh $(vcs_buildpath)/transcript
 
 # RISC-V Tests simulation
 APPS_DIR := $(abspath $(ROOT_DIR)/../apps)

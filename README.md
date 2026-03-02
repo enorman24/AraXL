@@ -27,16 +27,23 @@ Check `FUNCTIONALITIES.md` to check which instructions are currently support by 
 
 ## Get started
 
-Make sure you clone this repository recursively to get all the necessary submodules:
+Use the one-shot bootstrap script to prepare a fresh checkout. It will sync and update submodules, build the GCC/LLVM toolchains, build Spike and Verilator, checkout the hardware IP dependencies, and apply the required hardware patches:
 
 ```bash
-make git-submodules
+./scripts/get-started.sh
 ```
 
-If the repository path of any submodule changes, run the following command to change your submodule's pointer to the remote repository:
+For incremental runs, you can skip specific stages. For example, if the toolchains are already built:
+
+```bash
+./scripts/get-started.sh --skip-gcc --skip-llvm --skip-spike --skip-verilator
+```
+
+If you prefer to execute the setup manually, start by syncing and updating the submodules:
 
 ```bash
 git submodule sync --recursive
+make git-submodules
 ```
 
 ## Toolchain
@@ -162,6 +169,19 @@ app=hello_world make sim
 preload=/some_path/some_binary make sim
 # Run the simulation without starting the gui
 app=hello_world make simc
+```
+
+For Synopsys VCS, the repository also provides a dedicated compile and headless simulation flow:
+
+```bash
+# Go to the hardware folder
+cd hardware
+# Compile the RTL with VCS
+make compile_vcs
+# Run the simulation with the *hello_world* binary loaded
+app=hello_world make sim_vcs
+# Run the simulation in GUI mode
+app=hello_world make sim_gui_vcs
 ```
 
 We also provide the `simv` makefile target to run simulations with the Verilator model.
