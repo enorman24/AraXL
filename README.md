@@ -47,7 +47,7 @@ Please check `config/README.md` for more details. This sets the number of lanes 
 
 By default the number of clusters is 2 and the number of lanes per clusters is 4 for an 8 lane AraXL configuration.
 
-To change the configuration set `nr_clusters=4` and `nr_lanes=8` when compiling applications or hardware.
+To change the configuration set `nr_clusters=4` and `nr_lanes=4` when compiling applications or hardware.
 
 Prepend `config=chosen_ara_configuration` to your Makefile commands, or export the `ARA_CONFIGURATION` variable, to chose a configuration other than the `default` one.
 
@@ -63,7 +63,7 @@ make bin/hello_world
 ```
 fmatmul example for 32 lane configuration
 ```
-make bin/fmatmul nr_clusters=4 nr_lanes=8
+make bin/fmatmul nr_clusters=4 nr_lanes=4
 ```
 
 
@@ -75,8 +75,8 @@ For Synopsys VCS, the repository also provides a dedicated compile and headless 
 ```bash
 # Go to the hardware folder
 cd hardware
-# Compile the RTL with VCS
-make compile_vcs nr_clusters=4 nr_lanes=8
+# Only compile the hardware without running the simulation.
+make compile nr_clusters=4 nr_lanes=4
 # Run the simulation with the *hello_world* binary loaded
 app=hello_world make sim_vcs
 # show waveform after simulation
@@ -98,7 +98,7 @@ To compile a program and generate its vector trace:
 
 ```bash
 cd apps
-make bin/${program}.ideal nr_clusters=4 nr_lanes=8
+make bin/${program}.ideal nr_clusters=4 nr_lanes=4
 ```
 
 This command will generate the `ideal` binary to be loaded in the L2 memory for the simulation (data accessed by the vector code).
@@ -106,7 +106,7 @@ To run the system in Ideal Dispatcher mode:
 
 ```bash
 cd hardware
-make sim app=${program} ideal_dispatcher=1 nr_clusters=4 nr_lanes=8
+make sim app=${program} ideal_dispatcher=1 nr_clusters=4 nr_lanes=4
 ```
 
 ### Linting Flow
