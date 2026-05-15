@@ -8,8 +8,11 @@ KERNEL_DIR := $(ROOT_DIR)/kernels
 OUTPUT_DIR := $(ARTIFACTS_DIR)/output
 BIN_DIR := $(ARTIFACTS_DIR)/bin
 BUILD_DIR := $(ARTIFACTS_DIR)/build
+LIB_DIR := $(ARTIFACTS_DIR)/lib
+ARAXL_LIB := $(LIB_DIR)/libaraxl_kernels.a
 
 include $(ROOT_DIR)/config.mk
+-include $(KERNEL_DIR)/$(app)/deps.mk
 
 app ?= dotproduct
 nr_lanes ?= 4
@@ -27,6 +30,9 @@ VERIL_BUILD_DIR := build-nc$(nr_clusters)-l$(nr_lanes)
 VERIL_BINARY := $(ARA_DIR)/hardware/$(VERIL_BUILD_DIR)/verilator/Vara_tb_verilator
 
 
+KERNEL_DEP_OBJS := $(patsubst %.c, $(LIB_DIR)/%.o, $(notdir $(KERNEL_DEPS)))
+
+
 RUNTIME_LLVM := \
   $(COMMON_DIR)/crt0-llvm.S.o \
   $(COMMON_DIR)/printf-llvm.c.o \
@@ -40,6 +46,17 @@ RISCV_CXXFLAGS += -I$(COMMON_DIR)
 
 
 .PHONY: compile clean linker_script sim verilate help tvm-ir
+
+# compile the dependencies
+define compile_dep
+$(LIB_DIR)/$(notdir $(1:.c=.o)): $(1) | $(LIB_DIR)
+	$(RISCV_CC) $(RISCV_CCFLAGS) -I$(dir $(1)) -c $$< -o $$@
+endef
+
+$(foreach dep,$(KERNEL_DEPS),$(eval $(call compile_dep,$(dep))))
+
+$(ARAXL_LIB): $(KERNEL_DEP_OBJS) | $(LIB_DIR)
+	$(RISCV_AR) rcs $@ $^
 
 # compile the kernel binary
 compile: $(ELF)
@@ -111,14 +128,26 @@ $(MAIN_OBJ): $(MAIN_C) | $(APP_BUILD_DIR)
 	$(RISCV_CC) $(RISCV_CCFLAGS) -c $< -o $@ 
 
 
-$(ELF): $(TVM_OBJ) $(MAIN_OBJ) $(LINK_LD) | $(BIN_DIR)
-	$(RISCV_CC) $(RISCV_CCFLAGS) $(RISCV_LDFLAGS) $(TVM_OBJ) $(MAIN_OBJ) $(RUNTIME_LLVM) -o $@ -T$(LINK_LD)
+ifneq ($(KERNEL_DEPS),)
+ELF_DEPS := $(TVM_OBJ) $(MAIN_OBJ) $(ARAXL_LIB) $(LINK_LD)
+LIB_FLAGS := -L$(LIB_DIR) -laraxl_kernels
+else
+ELF_DEPS := $(TVM_OBJ) $(MAIN_OBJ) $(LINK_LD)
+LIB_FLAGS :=
+endif
+
+$(ELF): $(ELF_DEPS) | $(BIN_DIR)
+	$(RISCV_CC) $(RISCV_CCFLAGS) $(RISCV_LDFLAGS) $(TVM_OBJ) $(MAIN_OBJ) $(RUNTIME_LLVM) $(LIB_FLAGS) -o $@ -T$(LINK_LD)
 	$(RISCV_OBJDUMP) $(RISCV_OBJDUMP_FLAGS) -D $@ > $@.dump
 	$(RISCV_STRIP) $@ -S --strip-unneeded
 
+$(LIB_DIR):
+	mkdir -p $@
 
 clean:
-	rm -rf $(ARTIFACTS_DIR)
+	rm -rf $(OUTPUT_DIR)
+	rm -rf $(BUILD_DIR)
+	rm -rf $(BIN_DIR)
 
 
 

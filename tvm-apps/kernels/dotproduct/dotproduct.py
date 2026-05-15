@@ -1,7 +1,6 @@
 from tvm.script import ir as I # Module level decorator
 from tvm.script import tirx as T # Tensor primitives 
 import tvm # Main package for build, target, transfor
-# TODO fix correct this path
 from ..common.common import target, save_kernel
 
 
